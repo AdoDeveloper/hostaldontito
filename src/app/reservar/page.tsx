@@ -2,20 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import Calendario from '@/components/reservas/Calendario';
-import { Calendar, User, CheckCircle, ArrowLeft, ArrowRight, AlertCircle } from 'lucide-react';
+import { Calendar, User, CheckCircle, ArrowLeft, ArrowRight, AlertCircle, CheckSquare, Check, LogIn, UserPlus } from 'lucide-react';
 import {
-  getHabitaciones,
-  getReservas,
-  verificarDisponibilidad,
-  calcularPrecioTotal,
-  guardarReserva,
-  guardarHuesped,
-  generarIdReserva,
-  generarIdHuesped,
-} from '@/lib/data';
+  getHabitacionesSupabase,
+  verificarDisponibilidadSupabase,
+  calcularPrecioTotalSupabase,
+  guardarReservaSupabase,
+  guardarHuespedSupabase,
+  verificarSesionHuespedSupabase,
+} from '@/lib/supabase-data';
+import type { CuentaHuesped } from '@/lib/supabase-data';
 import type { Habitacion, DatosReserva } from '@/types';
 
 export default function ReservarPage() {
@@ -35,10 +35,96 @@ export default function ReservarPage() {
   });
   const [errores, setErrores] = useState<string[]>([]);
   const [procesando, setProcesando] = useState(false);
+  const [cargando, setCargando] = useState(true);
+  const [precioTotal, setPrecioTotal] = useState(0);
+  const [disponibilidadCache, setDisponibilidadCache] = useState<Record<string, boolean>>({});
+  const [cuentaHuesped, setCuentaHuesped] = useState<CuentaHuesped | null>(null);
 
   useEffect(() => {
-    setHabitaciones(getHabitaciones());
+    const cargarDatos = async () => {
+      try {
+        // Verificar si el huésped tiene sesión activa
+        const token = localStorage.getItem('huesped_token');
+        if (token) {
+          const cuenta = await verificarSesionHuespedSupabase(token);
+          if (cuenta) {
+            setCuentaHuesped(cuenta);
+            // Pre-llenar datos del huésped
+            setDatosHuesped({
+              nombreCompleto: cuenta.nombre,
+              correoElectronico: cuenta.email,
+              telefono: cuenta.telefono,
+              notas: '',
+            });
+          }
+        }
+
+        const habs = await getHabitacionesSupabase();
+        setHabitaciones(habs);
+      } catch (error) {
+        console.error('Error cargando habitaciones:', error);
+        setErrores(['Error al cargar las habitaciones. Por favor, recarga la página.']);
+      } finally {
+        setCargando(false);
+      }
+    };
+    cargarDatos();
   }, []);
+
+  // Verificar disponibilidad cuando cambian las fechas
+  useEffect(() => {
+    const verificarTodasDisponibilidades = async () => {
+      if (!fechaEntrada || !fechaSalida || habitaciones.length === 0) {
+        return;
+      }
+
+      // Limpiar cache antes de verificar nuevamente
+      setDisponibilidadCache({});
+
+      const nuevaDisponibilidad: Record<string, boolean> = {};
+
+      // Verificar todas las habitaciones en paralelo
+      const resultados = await Promise.all(
+        habitaciones.map(async (hab) => {
+          try {
+            const disponible = await verificarDisponibilidadSupabase(hab.id, fechaEntrada, fechaSalida);
+            return { id: hab.id, disponible };
+          } catch (error) {
+            console.error('Error verificando disponibilidad para habitación', hab.id, ':', error);
+            return { id: hab.id, disponible: true }; // Asumir disponible en caso de error
+          }
+        })
+      );
+
+      resultados.forEach(({ id, disponible }) => {
+        nuevaDisponibilidad[id] = disponible;
+      });
+
+      setDisponibilidadCache(nuevaDisponibilidad);
+    };
+
+    verificarTodasDisponibilidades();
+  }, [fechaEntrada, fechaSalida, habitaciones]);
+
+  // Calcular precio cuando cambian la habitación o fechas
+  useEffect(() => {
+    const calcularPrecio = async () => {
+      if (!habitacionSeleccionada || !fechaEntrada || !fechaSalida) {
+        setPrecioTotal(0);
+        return;
+      }
+
+      try {
+        const precio = await calcularPrecioTotalSupabase(habitacionSeleccionada, fechaEntrada, fechaSalida);
+        setPrecioTotal(precio);
+      } catch (error) {
+        console.error('Error calculando precio:', error);
+        setPrecioTotal(0);
+      }
+    };
+
+    calcularPrecio();
+  }, [habitacionSeleccionada, fechaEntrada, fechaSalida]);
 
   const manejarSeleccionFecha = (fecha: string) => {
     if (seleccionandoFecha === 'entrada') {
@@ -57,13 +143,13 @@ export default function ReservarPage() {
 
   const habitacionDisponible = (idHabitacion: string): boolean => {
     if (!fechaEntrada || !fechaSalida) return true;
-    return verificarDisponibilidad(idHabitacion, fechaEntrada, fechaSalida);
+    // Si el cache no tiene datos para esta habitación, está verificando
+    if (disponibilidadCache[idHabitacion] === undefined) return true;
+    return disponibilidadCache[idHabitacion];
   };
 
-  const obtenerPrecioTotal = (): number => {
-    if (!habitacionSeleccionada || !fechaEntrada || !fechaSalida) return 0;
-    return calcularPrecioTotal(habitacionSeleccionada, fechaEntrada, fechaSalida);
-  };
+  // Estado para saber si se está verificando disponibilidad
+  const verificandoDisponibilidad = fechaEntrada && fechaSalida && Object.keys(disponibilidadCache).length === 0;
 
   const obtenerNumNoches = (): number => {
     if (!fechaEntrada || !fechaSalida) return 0;
@@ -74,7 +160,7 @@ export default function ReservarPage() {
 
   const validarPaso1 = (): boolean => {
     const nuevosErrores: string[] = [];
-    
+
     if (!habitacionSeleccionada) {
       nuevosErrores.push('Debe seleccionar una habitación');
     }
@@ -91,7 +177,7 @@ export default function ReservarPage() {
 
   const validarPaso2 = (): boolean => {
     const nuevosErrores: string[] = [];
-    
+
     if (!datosHuesped.nombreCompleto.trim()) {
       nuevosErrores.push('El nombre completo es obligatorio');
     }
@@ -133,41 +219,43 @@ export default function ReservarPage() {
 
   const confirmarReserva = async () => {
     setProcesando(true);
-    
+
     try {
-      // Simular delay de procesamiento
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      let huespedId: string;
 
-      const idHuesped = generarIdHuesped();
-      const idReserva = generarIdReserva();
+      // Si el huésped tiene cuenta, usar su ID existente
+      if (cuentaHuesped) {
+        huespedId = cuentaHuesped.huespedId;
+      } else {
+        // Guardar nuevo huésped en Supabase con historialVisitas en 0
+        // (se incrementará cuando el admin confirme la reserva)
+        const nuevoHuesped = await guardarHuespedSupabase({
+          nombreCompleto: datosHuesped.nombreCompleto,
+          correoElectronico: datosHuesped.correoElectronico,
+          telefono: datosHuesped.telefono,
+          fechaRegistro: new Date().toISOString(),
+          historialVisitas: 0, // No contar como visita hasta que se confirme
+        });
+        huespedId = nuevoHuesped.id;
+      }
 
-      // Guardar huésped
-      guardarHuesped({
-        id: idHuesped,
-        nombreCompleto: datosHuesped.nombreCompleto,
-        correoElectronico: datosHuesped.correoElectronico,
-        telefono: datosHuesped.telefono,
-        fechaRegistro: new Date().toISOString(),
-        historialVisitas: 1,
-      });
-
-      // Guardar reserva
-      guardarReserva({
-        id: idReserva,
-        idHuesped,
+      // Guardar reserva en Supabase
+      const nuevaReserva = await guardarReservaSupabase({
+        idHuesped: huespedId,
         idHabitacion: habitacionSeleccionada,
         fechaEntrada: fechaEntrada!,
         fechaSalida: fechaSalida!,
         numPersonas,
-        precioTotal: obtenerPrecioTotal(),
-        estado: 'confirmada',
-        fechaCreacion: new Date().toISOString(),
-        notas: datosHuesped.notas,
+        precioTotal: precioTotal,
+        estado: 'pendiente',
+        metodoPago: undefined,
+        notas: datosHuesped.notas || undefined,
       });
 
-      // Redirigir a página de confirmación
-      router.push(`/reservar/confirmacion?id=${idReserva}`);
+      // Redirigir a página de confirmación (el email se enviará cuando el admin confirme)
+      router.push(`/reservar/confirmacion?id=${nuevaReserva.id}`);
     } catch (error) {
+      console.error('Error al guardar reserva:', error);
       setErrores(['Hubo un error al procesar la reserva. Por favor, intente nuevamente.']);
       setProcesando(false);
     }
@@ -175,10 +263,25 @@ export default function ReservarPage() {
 
   const habitacionSeleccionadaInfo = habitaciones.find(h => h.id === habitacionSeleccionada);
 
+  if (cargando) {
+    return (
+      <div className="min-h-screen flex flex-col bg-gray-50">
+        <Header />
+        <main className="flex-1 container mx-auto px-4 py-8 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-800 mx-auto mb-4"></div>
+            <p className="text-lg text-gray-600">Cargando habitaciones...</p>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
-      
+
       <main className="flex-1 container mx-auto px-4 py-8">
         {/* Indicador de progreso */}
         <div className="max-w-4xl mx-auto mb-8">
@@ -237,7 +340,7 @@ export default function ReservarPage() {
             <h2 className="text-3xl font-bold text-primary-900 mb-6">
               Paso 1: Selecciona tus fechas y habitación
             </h2>
-            
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Calendario */}
               <div>
@@ -288,6 +391,12 @@ export default function ReservarPage() {
               {/* Habitaciones */}
               <div>
                 <h3 className="text-2xl font-bold mb-4">Selecciona tu habitación</h3>
+                {verificandoDisponibilidad && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    <span className="text-blue-700 text-sm">Verificando disponibilidad...</span>
+                  </div>
+                )}
                 <div className="space-y-4">
                   {habitaciones.map((hab) => {
                     const disponible = habitacionDisponible(hab.id);
@@ -297,7 +406,7 @@ export default function ReservarPage() {
                       <button
                         key={hab.id}
                         onClick={() => disponible && setHabitacionSeleccionada(hab.id)}
-                        disabled={!disponible}
+                        disabled={!disponible || !!verificandoDisponibilidad}
                         className={`w-full text-left p-4 rounded-lg border-2 transition-all
                           ${seleccionada
                             ? 'border-primary-800 bg-primary-50'
@@ -327,7 +436,7 @@ export default function ReservarPage() {
                               ${hab.precioBase}
                             </div>
                             <div className="text-sm text-gray-600">por noche</div>
-                            {!disponible && fechaEntrada && fechaSalida && (
+                            {!disponible && fechaEntrada && fechaSalida && !verificandoDisponibilidad && (
                               <div className="mt-2 text-sm text-red-600 font-semibold">
                                 No disponible
                               </div>
@@ -376,6 +485,56 @@ export default function ReservarPage() {
               Paso 2: Completa tus datos
             </h2>
 
+            {/* Banner de sesión */}
+            {cuentaHuesped ? (
+              <div className="mb-6 bg-green-50 border-2 border-green-200 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center text-white font-bold">
+                    {cuentaHuesped.nombre.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-green-900">
+                      Reservando como {cuentaHuesped.nombre}
+                    </p>
+                    <p className="text-sm text-green-700">
+                      Tus datos han sido completados automáticamente
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mb-6 bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div>
+                    <p className="font-semibold text-blue-900">
+                      ¿Ya tienes cuenta?
+                    </p>
+                    <p className="text-sm text-blue-700">
+                      Inicia sesión para completar tus datos automáticamente y ver tus reservas
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Link
+                      href="/cuenta/login"
+                      onClick={() => localStorage.setItem('redirect_after_login', '/reservar')}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors text-sm"
+                    >
+                      <LogIn className="w-4 h-4" />
+                      Iniciar sesión
+                    </Link>
+                    <Link
+                      href="/cuenta/registro"
+                      onClick={() => localStorage.setItem('redirect_after_login', '/reservar')}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 text-primary-600 font-medium rounded-lg border border-primary-300 transition-colors text-sm"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      Crear cuenta
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="card space-y-6">
               <div>
                 <label className="label">
@@ -389,6 +548,7 @@ export default function ReservarPage() {
                   }
                   className="input-field"
                   placeholder="Ingresa tu nombre completo"
+                  readOnly={!!cuentaHuesped}
                 />
               </div>
 
@@ -404,6 +564,7 @@ export default function ReservarPage() {
                   }
                   className="input-field"
                   placeholder="ejemplo@correo.com"
+                  readOnly={!!cuentaHuesped}
                 />
                 <p className="text-base text-gray-600 mt-2">
                   Recibirás la confirmación de tu reserva en este correo
@@ -422,6 +583,7 @@ export default function ReservarPage() {
                   }
                   className="input-field"
                   placeholder="+503 XXXX-XXXX"
+                  readOnly={!!cuentaHuesped}
                 />
               </div>
 
@@ -439,8 +601,9 @@ export default function ReservarPage() {
               </div>
 
               <div className="bg-primary-50 border-2 border-primary-200 rounded-lg p-4">
-                <p className="text-base text-gray-700">
-                  ☑️ Acepto los términos y condiciones del servicio
+                <p className="text-base text-gray-700 flex items-center gap-2">
+                  <CheckSquare className="w-5 h-5 text-primary-700" />
+                  Acepto los terminos y condiciones del servicio
                 </p>
               </div>
             </div>
@@ -468,7 +631,7 @@ export default function ReservarPage() {
             <div className="card space-y-6">
               <div className="bg-gold-50 border-2 border-gold-500 rounded-lg p-6">
                 <h3 className="text-2xl font-bold text-gold-900 mb-4">Resumen de tu reserva</h3>
-                
+
                 <div className="space-y-3 text-lg">
                   <div className="flex justify-between">
                     <span className="font-semibold">Habitación:</span>
@@ -514,7 +677,7 @@ export default function ReservarPage() {
                     <div className="flex justify-between items-baseline">
                       <span className="text-2xl font-bold">Total:</span>
                       <span className="text-3xl font-bold text-gold-900">
-                        ${obtenerPrecioTotal().toFixed(2)}
+                        ${precioTotal.toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -534,12 +697,20 @@ export default function ReservarPage() {
               </div>
 
               <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-4">
-                <p className="text-base text-gray-700">
-                  ✓ Recibirás un correo de confirmación inmediatamente<br />
-                  ✓ También enviaremos un SMS con los detalles de tu reserva<br />
-                  ✓ El pago se realizará al momento del check-in<br />
-                  ✓ Cancelación gratuita hasta 24 horas antes
-                </p>
+                <div className="space-y-2 text-base text-gray-700">
+                  <p className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                    Recibiras un correo de confirmacion inmediatamente
+                  </p>
+                  <p className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                    El pago se realizara al momento del check-in
+                  </p>
+                  <p className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                    Cancelacion gratuita hasta 24 horas antes
+                  </p>
+                </div>
               </div>
             </div>
 

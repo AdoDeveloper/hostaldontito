@@ -1,100 +1,63 @@
 // Sistema de datos mockeados para Hostal Don Tito
 // Utiliza localStorage para persistencia entre sesiones
+// NOTA: Este archivo solo se usa para autenticación de admin
+// Los datos principales ahora vienen de Supabase (supabase-data.ts)
 
 import { Habitacion, Reserva, Huesped, Usuario } from '@/types';
 
-// Datos iniciales de habitaciones
-export const habitacionesIniciales: Habitacion[] = [
+// Versión de datos - cambiar para forzar reinicio de localStorage
+const DATA_VERSION = '2.1.0';
+
+// =====================================================
+// DATOS INICIALES (solo para fallback)
+// =====================================================
+
+const habitacionesIniciales: Habitacion[] = [
   {
-    id: 'hab-001',
+    id: '1',
     numero: '101',
     tipo: 'individual',
     capacidad: 1,
     precioBase: 18,
     amenidades: ['WiFi', 'Aire acondicionado', 'TV', 'Baño privado'],
-    descripcion: 'Habitación individual cómoda y acogedora con todas las comodidades básicas.',
+    descripcion: 'Habitación individual cómoda y acogedora.',
   },
   {
-    id: 'hab-002',
+    id: '2',
     numero: '102',
     tipo: 'doble',
     capacidad: 2,
     precioBase: 28,
     amenidades: ['WiFi', 'Aire acondicionado', 'TV', 'Baño privado', 'Mini refrigerador'],
-    descripcion: 'Habitación doble espaciosa perfecta para parejas, con vista al jardín.',
+    descripcion: 'Habitación doble espaciosa perfecta para parejas.',
   },
   {
-    id: 'hab-003',
+    id: '3',
     numero: '103',
     tipo: 'triple',
     capacidad: 3,
     precioBase: 38,
     amenidades: ['WiFi', 'Aire acondicionado', 'TV', 'Baño privado', 'Escritorio'],
-    descripcion: 'Habitación triple ideal para pequeñas familias o grupos de amigos.',
+    descripcion: 'Habitación triple ideal para pequeñas familias.',
   },
   {
-    id: 'hab-004',
+    id: '4',
     numero: '104',
     tipo: 'familiar',
     capacidad: 4,
     precioBase: 45,
     amenidades: ['WiFi', 'Aire acondicionado', 'TV', 'Baño privado', 'Mini refrigerador', 'Sala de estar'],
-    descripcion: 'Habitación familiar amplia con espacio adicional para el confort de toda la familia.',
+    descripcion: 'Habitación familiar amplia con espacio adicional.',
   },
 ];
 
-// Reservas de ejemplo
-export const reservasIniciales: Reserva[] = [
-  {
-    id: 'res-001',
-    idHuesped: 'hue-001',
-    idHabitacion: 'hab-002',
-    fechaEntrada: '2024-11-25',
-    fechaSalida: '2024-11-27',
-    numPersonas: 2,
-    precioTotal: 56,
-    estado: 'confirmada',
-    fechaCreacion: '2024-11-20T10:30:00Z',
-    metodoPago: 'tarjeta',
-  },
-  {
-    id: 'res-002',
-    idHuesped: 'hue-002',
-    idHabitacion: 'hab-001',
-    fechaEntrada: '2024-11-26',
-    fechaSalida: '2024-11-28',
-    numPersonas: 1,
-    precioTotal: 36,
-    estado: 'confirmada',
-    fechaCreacion: '2024-11-21T14:15:00Z',
-    metodoPago: 'efectivo',
-  },
-];
+const reservasIniciales: Reserva[] = [];
 
-// Huéspedes de ejemplo
-export const huespedesIniciales: Huesped[] = [
-  {
-    id: 'hue-001',
-    nombreCompleto: 'María González',
-    correoElectronico: 'maria.gonzalez@email.com',
-    telefono: '+503 7123-4567',
-    fechaRegistro: '2024-11-20T10:30:00Z',
-    historialVisitas: 1,
-  },
-  {
-    id: 'hue-002',
-    nombreCompleto: 'Juan Pérez',
-    correoElectronico: 'juan.perez@email.com',
-    telefono: '+503 7234-5678',
-    fechaRegistro: '2024-11-21T14:15:00Z',
-    historialVisitas: 1,
-  },
-];
+const huespedesIniciales: Huesped[] = [];
 
-// Usuario admin de ejemplo
-export const usuariosIniciales: Usuario[] = [
+const usuariosIniciales: Usuario[] = [
   {
-    id: 'usr-001',
+    id: '1',
     nombre: 'Administrador',
     email: 'admin@hostaldontico.com',
     rol: 'admin',
@@ -104,8 +67,23 @@ export const usuariosIniciales: Usuario[] = [
 
 // Funciones para manejar localStorage
 
+// Verificar y limpiar datos antiguos si la version cambio
+const verificarVersion = (): void => {
+  if (typeof window === 'undefined') return;
+  const storedVersion = localStorage.getItem('data_version');
+  if (storedVersion !== DATA_VERSION) {
+    // Limpiar todos los datos antiguos
+    localStorage.removeItem('habitaciones');
+    localStorage.removeItem('reservas');
+    localStorage.removeItem('huespedes');
+    localStorage.removeItem('usuarios');
+    localStorage.setItem('data_version', DATA_VERSION);
+  }
+};
+
 export const getHabitaciones = (): Habitacion[] => {
   if (typeof window === 'undefined') return habitacionesIniciales;
+  verificarVersion();
   const stored = localStorage.getItem('habitaciones');
   if (!stored) {
     localStorage.setItem('habitaciones', JSON.stringify(habitacionesIniciales));
@@ -116,6 +94,7 @@ export const getHabitaciones = (): Habitacion[] => {
 
 export const getReservas = (): Reserva[] => {
   if (typeof window === 'undefined') return reservasIniciales;
+  verificarVersion();
   const stored = localStorage.getItem('reservas');
   if (!stored) {
     localStorage.setItem('reservas', JSON.stringify(reservasIniciales));
@@ -126,6 +105,7 @@ export const getReservas = (): Reserva[] => {
 
 export const getHuespedes = (): Huesped[] => {
   if (typeof window === 'undefined') return huespedesIniciales;
+  verificarVersion();
   const stored = localStorage.getItem('huespedes');
   if (!stored) {
     localStorage.setItem('huespedes', JSON.stringify(huespedesIniciales));
@@ -136,6 +116,7 @@ export const getHuespedes = (): Huesped[] => {
 
 export const getUsuarios = (): Usuario[] => {
   if (typeof window === 'undefined') return usuariosIniciales;
+  verificarVersion();
   const stored = localStorage.getItem('usuarios');
   if (!stored) {
     localStorage.setItem('usuarios', JSON.stringify(usuariosIniciales));
@@ -191,7 +172,8 @@ export const verificarDisponibilidad = (
   const conflictos = reservas.filter(r => {
     if (r.id === excluirReservaId) return false;
     if (r.idHabitacion !== idHabitacion) return false;
-    if (r.estado === 'cancelada') return false;
+    // Solo pendientes y confirmadas ocupan habitación
+    if (r.estado !== 'pendiente' && r.estado !== 'confirmada') return false;
 
     const rEntrada = new Date(r.fechaEntrada);
     const rSalida = new Date(r.fechaSalida);
@@ -228,9 +210,9 @@ export const obtenerEstadisticas = () => {
 
   const hoy = new Date().toISOString().split('T')[0];
   
-  // Reservas activas hoy
+  // Reservas activas hoy (solo pendientes y confirmadas ocupan habitación)
   const reservasHoy = reservas.filter(r => {
-    if (r.estado === 'cancelada') return false;
+    if (r.estado !== 'pendiente' && r.estado !== 'confirmada') return false;
     const entrada = new Date(r.fechaEntrada);
     const salida = new Date(r.fechaSalida);
     const hoyDate = new Date(hoy);
@@ -240,20 +222,20 @@ export const obtenerEstadisticas = () => {
   // Ocupación
   const ocupacionHoy = Math.round((reservasHoy.length / habitaciones.length) * 100);
 
-  // Ingresos del mes
+  // Ingresos del mes (solo reservas confirmadas o completadas)
   const primerDiaMes = new Date();
   primerDiaMes.setDate(1);
   const reservasMes = reservas.filter(r => {
     const creacion = new Date(r.fechaCreacion);
-    return creacion >= primerDiaMes && r.estado !== 'cancelada';
+    return creacion >= primerDiaMes && (r.estado === 'confirmada' || r.estado === 'completada');
   });
   const ingresosMes = reservasMes.reduce((sum, r) => sum + r.precioTotal, 0);
 
-  // Reservas futuras
+  // Reservas futuras (solo pendientes y confirmadas)
   const reservasFuturas = reservas.filter(r => {
     const entrada = new Date(r.fechaEntrada);
     const hoyDate = new Date(hoy);
-    return entrada > hoyDate && r.estado !== 'cancelada';
+    return entrada > hoyDate && (r.estado === 'pendiente' || r.estado === 'confirmada');
   });
 
   return {
@@ -262,7 +244,7 @@ export const obtenerEstadisticas = () => {
     totalHabitaciones: habitaciones.length,
     ingresosMes,
     reservasFuturas: reservasFuturas.length,
-    totalReservas: reservas.filter(r => r.estado !== 'cancelada').length,
+    totalReservas: reservas.filter(r => r.estado === 'pendiente' || r.estado === 'confirmada').length,
     totalHuespedes: huespedes.length,
   };
 };

@@ -48,3 +48,28 @@
     @apply block text-lg font-semibold text-gray-700 mb-2;
   }
 }
+
+/* Estilos para impresión de factura */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .factura-activa,
+  .factura-activa * {
+    visibility: visible;
+  }
+
+  .factura-activa {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 20px;
+    background: white;
+  }
+
+  .print\\:hidden {
+    display: none !important;
+  }
+}

@@ -13,6 +13,7 @@ export interface Habitacion {
 
 export interface Reserva {
   id: string;
+  codigoReserva: string; // Código legible como "HDT-2024-0001"
   idHuesped: string;
   idHabitacion: string;
   fechaEntrada: string; // ISO date string

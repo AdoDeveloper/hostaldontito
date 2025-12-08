@@ -3,7 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { LogIn, AlertCircle, Home } from 'lucide-react';
+import { autenticarConPasswordSupabase } from '@/lib/supabase-data';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { autenticarUsuario, iniciarSesion } from '@/lib/data';
 
 export default function LoginPage() {
@@ -19,11 +22,22 @@ export default function LoginPage() {
     setProcesando(true);
 
     try {
-      // Simular delay de autenticación
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Intentar autenticación con Supabase primero
+      if (isSupabaseConfigured()) {
+        const resultado = await autenticarConPasswordSupabase(email, password);
 
+        if (resultado) {
+          // Guardar token y usuario en localStorage
+          localStorage.setItem('auth_token', resultado.token);
+          localStorage.setItem('usuario', JSON.stringify(resultado.usuario));
+          router.push('/admin/dashboard');
+          return;
+        }
+      }
+
+      // Fallback a autenticación local
       const usuario = autenticarUsuario(email, password);
-      
+
       if (usuario) {
         iniciarSesion(usuario);
         router.push('/admin/dashboard');
@@ -31,6 +45,7 @@ export default function LoginPage() {
         setError('Credenciales incorrectas. Por favor, verifica tu email y contraseña.');
       }
     } catch (err) {
+      console.error('Error de autenticación:', err);
       setError('Hubo un error al iniciar sesión. Por favor, intenta nuevamente.');
     } finally {
       setProcesando(false);
@@ -42,8 +57,14 @@ export default function LoginPage() {
       <div className="max-w-md w-full">
         {/* Logo y título */}
         <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-gold-500 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-4xl font-bold text-white">DT</span>
+          <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-4 p-2">
+            <Image
+              src="/logo-tito.png"
+              alt="Hostal Don Tito"
+              width={80}
+              height={80}
+              className="object-contain rounded-full"
+            />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">HOSTAL DON TITO</h1>
           <p className="text-xl text-gold-300">Panel Administrativo</p>
@@ -112,16 +133,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Información de demo */}
-          <div className="mt-6 p-4 bg-blue-50 border-2 border-blue-300 rounded-lg">
-            <p className="text-base text-gray-700 font-semibold mb-2">
-              🔐 Credenciales de prueba:
-            </p>
-            <p className="text-base text-gray-700">
-              <strong>Email:</strong> admin@hostaldontico.com<br />
-              <strong>Contraseña:</strong> admin123
-            </p>
-          </div>
         </div>
 
         {/* Volver al inicio */}
