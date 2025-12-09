@@ -337,7 +337,7 @@ export default function MisReservasPage() {
               <h3 className="font-semibold text-blue-900 mb-1">¿Necesitas ayuda?</h3>
               <p className="text-blue-700 text-sm">
                 Si necesitas modificar o cancelar una reserva, contáctanos directamente al teléfono{' '}
-                <a href="tel:+51982123456" className="font-semibold hover:underline">+51 982 123 456</a>
+                <a href="tel:+51982123456" className="font-semibold hover:underline">+503 7096-9464</a>
                 {' '}o escríbenos a{' '}
                 <a href="mailto:reservas@hostaldontico.com" className="font-semibold hover:underline">reservas@hostaldontico.com</a>
               </p>
